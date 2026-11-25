@@ -4,7 +4,7 @@
   "description": "Jeu de lettres en français : trouve le mot en 6 essais, puis découvre sa définition.",
   "lang": "fr",
   "start_url": "./",
-  "scope": "./",
+  "scope": "../",
   "display": "standalone",
   "background_color": "#11161f",
   "theme_color": "#18202f",
