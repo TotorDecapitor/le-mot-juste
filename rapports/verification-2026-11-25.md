@@ -1,5 +1,7 @@
 # Vérification Larousse / Robert — 25 novembre 2026
 
+> **Note :** le push sur `main` a été refusé (main avait avancé entre-temps : commit sur index.html). Rien n'a été forcé ; les changements sont poussés sur la branche `verification-2026-11-25`, à fusionner dans main (aucun conflit attendu).
+
 Les pages Larousse (et Robert pour « guêpe » et « morse », absents ou illisibles côté Larousse) ont été consultées pour les 913 mots. La relecture a été faite par comparaison des sens ; aucun texte de dictionnaire n'est reproduit ici.
 
 | Longueur | Vérifiés | OK | Corrigés | Retirés | Non vérifiés |
