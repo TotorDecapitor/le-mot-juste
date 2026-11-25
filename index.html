@@ -83,6 +83,9 @@ h1 span { color: var(--bien); }
 }
 .case.pleine { border-color: var(--muted); animation: pop .12s; }
 .case.fantome { color: var(--bien); opacity: .5; border-style: dashed; border-color: var(--bien); }
+.case.active { cursor: pointer; }
+.case.curseur { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.case.curseur.fantome { opacity: 1; color: color-mix(in srgb, var(--bien) 55%, transparent); }
 .case.bien, .case.mal, .case.absent { color: var(--on-color); border-color: transparent; }
 .case.bien { background: var(--bien); } .case.mal { background: var(--mal); } .case.absent { background: var(--absent); }
 .case.tourne { animation: tourne .5s ease both; }
@@ -214,7 +217,11 @@ async function nouvellePartie(n = N, reprise = null) {
   $("grille").style.setProperty("--n", N);
   etat = reprise && reprise.n === N && D().cibles.some(c => c.cle === reprise.cible)
     ? reprise
-    : { n: N, cible: choisirMot(), essais: [], saisie: "", fini: false, indice: null };
+    : { n: N, cible: choisirMot(), essais: [], saisie: [], fini: false, indice: null };
+  // La saisie est un tableau de N cases (vides ou remplies) avec un curseur
+  if (!Array.isArray(etat.saisie)) etat.saisie = [...(etat.saisie || "")];
+  etat.saisie = Array.from({ length: N }, (_, i) => etat.saisie[i] || "");
+  if (typeof etat.curseur !== "number") etat.curseur = Math.min(etat.saisie.filter(Boolean).length, N - 1);
   sauver();
   $("chargement").hidden = true; $("grille").hidden = false;
   dessinerGrille(); dessinerClavier(); majIndice(); fermer();
@@ -245,6 +252,10 @@ function dessinerGrille(animerLigne = -1) {
       const l = lettres[c] || "";
       cs.textContent = l;
       if (l && !res) cs.classList.add("pleine");
+      if (!essai && !etat.fini && r === etat.essais.length) {
+        cs.classList.add("active"); cs.dataset.col = c;
+        if (c === etat.curseur) cs.classList.add("curseur");
+      }
       const h = etat.indice;
       if (!l && !essai && !etat.fini && r === etat.essais.length && h && h.pos === c) { cs.textContent = h.lettre; cs.classList.add("fantome"); }
       if (res) {
@@ -260,7 +271,7 @@ function dessinerGrille(animerLigne = -1) {
   }
 }
 
-const RANGS = ["AZERTYUIOP", "QSDFGHJKLM", "↵WXCVBN⌫"];
+const RANGS = ["AZERTYUIOP", "QSDFGHJKLM", "WXCVBN⌫↵"];
 function dessinerClavier() {
   const etatTouche = {}, rang = { absent: 1, mal: 2, bien: 3 };
   etat.essais.forEach(e => evaluer(e, etat.cible).forEach((r, i) => {
@@ -293,17 +304,36 @@ function secouer() {
 let anime = false;
 function touche(k) {
   if (!etat || etat.fini || anime || !$("voile").hidden) return;
+  const sa = etat.saisie;
   if (k === "Enter") return valider();
-  if (k === "Backspace") { etat.saisie = etat.saisie.slice(0, -1); return dessinerGrille(); }
+  if (k === "ArrowLeft") { etat.curseur = Math.max(0, etat.curseur - 1); return dessinerGrille(); }
+  if (k === "ArrowRight") { etat.curseur = Math.min(N - 1, etat.curseur + 1); return dessinerGrille(); }
+  if (k === "Backspace") {
+    // Efface la case du curseur ; si elle est vide, recule d'une case et l'efface
+    if (sa[etat.curseur]) sa[etat.curseur] = "";
+    else if (etat.curseur > 0) { etat.curseur--; sa[etat.curseur] = ""; }
+    return dessinerGrille();
+  }
   const l = norm(k);
-  if (/^[A-Z]$/.test(l) && etat.saisie.length < N) { etat.saisie += l; dessinerGrille(); }
+  if (!/^[A-Z]$/.test(l)) return;
+  sa[etat.curseur] = l;
+  // Va à la prochaine case vide à droite, sinon la première case vide, sinon la case suivante
+  let suiv = sa.findIndex((x, i) => i > etat.curseur && !x);
+  if (suiv < 0) suiv = sa.findIndex(x => !x);
+  etat.curseur = suiv >= 0 ? suiv : Math.min(etat.curseur + 1, N - 1);
+  dessinerGrille();
+}
+
+function choisirCase(c) {
+  if (!etat || etat.fini || anime || !$("voile").hidden) return;
+  etat.curseur = c; dessinerGrille();
 }
 
 function valider() {
-  const s = etat.saisie;
-  if (s.length < N) { secouer(); return toast("Il manque des lettres"); }
+  if (etat.saisie.some(x => !x)) { secouer(); return toast("Il manque des lettres"); }
+  const s = etat.saisie.join("");
   if (!D().dico.has(s)) { secouer(); return toast("« " + s + " » n'est pas dans le dictionnaire"); }
-  etat.essais.push(s); etat.saisie = "";
+  etat.essais.push(s); etat.saisie = Array(N).fill(""); etat.curseur = 0;
   dessinerGrille(etat.essais.length - 1);
   const gagne = s === etat.cible, perdu = !gagne && etat.essais.length >= ESSAIS;
   if (gagne || perdu) { etat.fini = true; etat.gagne = gagne; noterCarnet(); }
@@ -382,6 +412,7 @@ function afficherRegles() {
     ${ex("PLAGE", ["bien"])}<p>Le P est dans le mot et à la bonne place.</p>
     ${ex("TIGRE", ["", "", "mal"])}<p>Le G est dans le mot, mais à une autre place.</p>
     ${ex("LUNDI", ["", "", "", "absent"])}<p>Le D n'est pas dans le mot.</p>
+    <p style="margin-top:10px">Les lettres s'écrivent à la suite. Tu peux aussi toucher une case de la ligne en cours (encadrée en bleu) pour y placer une lettre directement.</p>
     <p style="margin-top:10px">Tu bloques ? Le bouton Indice te révèle une seule lettre et sa place, une fois par partie.</p>
     <p style="margin-top:10px">À la fin de chaque partie, tu découvres la définition du mot. Tous les mots joués restent dans ton carnet.</p></div>
     <div class="actions"><button class="btn primary" type="button" data-a="fermer">J'ai compris</button></div>`);
@@ -405,8 +436,9 @@ $("clavier").addEventListener("click", e => { const b = e.target.closest(".key")
 document.addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$("voile").hidden) { if (e.key === "Escape") fermer(); return; }
-  if (e.key === "Enter" || e.key === "Backspace" || e.key.length === 1) { e.preventDefault(); touche(e.key); }
+  if (["Enter", "Backspace", "ArrowLeft", "ArrowRight"].includes(e.key) || e.key.length === 1) { e.preventDefault(); touche(e.key); }
 });
+$("grille").addEventListener("click", e => { const c = e.target.closest(".case.active"); if (c) choisirCase(+c.dataset.col); });
 $("panneau").addEventListener("click", e => {
   const a = e.target.closest("[data-a]"); if (!a) return;
   if (a.dataset.a === "fermer") fermer();
