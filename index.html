@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Le Mot Juste</title>
+<meta name="description" content="Jeu de lettres en français : trouve le mot en 6 essais, puis découvre sa définition.">
+<meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11161f" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mot Juste">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icones/favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Une colonne centrée : en-tête, choix de longueur, grille 6×N, indice, clavier AZERTY. Fiche de définition en panneau. */
+:root {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --ink: #18202f;
+  --muted: #5b6578;
+  --line: #c6cedb;
+  --key: #dde3ec;
+  --bien: #2f8f52;
+  --mal: #e0892a;
+  --absent: #7d8698;
+  --accent: #2c5bd6;
+  --on-color: #ffffff;
+  --shadow: 0 10px 40px rgba(20, 30, 50, .18);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11161f; --surface: #1b2230; --ink: #e9edf4; --muted: #9aa5b8; --line: #364055;
+  --key: #2a3344; --bien: #3a9d5d; --mal: #d98328; --absent: #4a5366; --accent: #7a9cff;
+  --shadow: 0 10px 40px rgba(0, 0, 0, .5); color-scheme: dark;
+} }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px;
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px));
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+[hidden] { display: none !important; }
+.app { height: 100%; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding-block: 10px; }
+header { display: flex; align-items: center; gap: 8px; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: 1.5rem; margin: 0; letter-spacing: -.02em; flex: 1; white-space: nowrap; }
+h1 span { color: var(--bien); }
+.btn {
+  font: 600 .85rem var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 13px; cursor: pointer;
+}
+.btn:hover { border-color: var(--ink); }
+.btn:focus-visible, .key:focus-visible, .long button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:disabled:hover { border-color: var(--line); }
+
+.long { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.long > span { font-size: .8rem; color: var(--muted); font-weight: 600; margin-right: 2px; }
+.long button {
+  font: 800 .95rem var(--f-display); width: 38px; height: 34px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.long button[aria-pressed="true"] { background: var(--bien); border-color: var(--bien); color: var(--on-color); }
+
+.zone { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; position: relative; }
+.grille { --n: 5; --g: 6px; --t: min(58px, calc((100vw - 40px - (var(--n) - 1) * var(--g)) / var(--n)), 7.6vh);
+  display: grid; grid-template-rows: repeat(6, var(--t)); gap: var(--g); }
+.ligne { display: grid; grid-template-columns: repeat(var(--n), var(--t)); gap: var(--g); }
+.ligne.secoue { animation: secoue .4s; }
+.case {
+  display: grid; place-items: center; border: 2px solid var(--line); border-radius: 8px; background: var(--surface);
+  font: 800 calc(var(--t) * .5) var(--f-display); text-transform: uppercase; user-select: none; -webkit-user-select: none;
+}
+.case.pleine { border-color: var(--muted); animation: pop .12s; }
+.case.fantome { color: var(--bien); opacity: .5; border-style: dashed; border-color: var(--bien); }
+.case.bien, .case.mal, .case.absent { color: var(--on-color); border-color: transparent; }
+.case.bien { background: var(--bien); } .case.mal { background: var(--mal); } .case.absent { background: var(--absent); }
+.case.tourne { animation: tourne .5s ease both; }
+@keyframes pop { 50% { transform: scale(1.08); } }
+@keyframes secoue { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+@keyframes tourne { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+.chargement { color: var(--muted); font-weight: 600; }
+
+.indice {
+  max-width: 100%; font-size: .9rem; line-height: 1.45; color: var(--ink);
+  background: var(--surface); border: 1px dashed var(--bien); border-radius: 10px; padding: 8px 12px;
+}
+.indice strong { color: var(--bien); font-family: var(--f-display); font-size: 1.1em; }
+.indice b { font-weight: 600; color: var(--bien); margin-right: 6px; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
+.toast {
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+  font-weight: 600; padding: 9px 14px; border-radius: 8px; z-index: 5; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+}
+.outils { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+.clavier { display: flex; flex-direction: column; gap: 6px; }
+.rang { display: flex; gap: 5px; justify-content: center; }
+.key {
+  flex: 1; max-width: 46px; height: 52px; border: 0; border-radius: 7px; background: var(--key); color: var(--ink);
+  font: 600 1rem var(--f-body); cursor: pointer; user-select: none; -webkit-user-select: none; padding: 0; touch-action: manipulation;
+}
+.key.large { max-width: 76px; flex: 1.6; font-size: .8rem; }
+.key.bien { background: var(--bien); color: var(--on-color); }
+.key.mal { background: var(--mal); color: var(--on-color); }
+.key.absent { background: var(--absent); color: var(--on-color); opacity: .75; }
+
+.voile { position: fixed; inset: 0; background: rgba(10, 14, 22, .55); display: grid; place-items: center; z-index: 20;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.panneau { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); width: 100%; max-width: 440px; max-height: 100%; overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.panneau h2 { font-family: var(--f-display); margin: 0; font-size: 1.1rem; }
+.verdict { font-weight: 600; color: var(--muted); margin: 0; }
+.fiche { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.fiche .mot { font-family: var(--f-display); font-weight: 800; font-size: 2.2rem; letter-spacing: .02em; line-height: 1.05; overflow-wrap: anywhere; }
+.fiche .cat { font-style: italic; color: var(--muted); font-size: .9rem; }
+.fiche p { margin: 4px 0 0; line-height: 1.55; }
+.fiche a { color: var(--accent); font-weight: 600; font-size: .9rem; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.mini { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.mini .rangee { display: flex; gap: 3px; }
+.mini i { width: 14px; height: 14px; border-radius: 3px; display: block; }
+.mini i.bien { background: var(--bien); } .mini i.mal { background: var(--mal); } .mini i.absent { background: var(--absent); }
+
+.carnet { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.carnet li { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.carnet strong { font-family: var(--f-display); font-size: 1.1rem; }
+.carnet em { color: var(--muted); font-size: .85rem; margin-left: 6px; }
+.carnet .etat { float: right; font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--on-color); }
+.carnet .etat.ok { background: var(--bien); } .carnet .etat.ko { background: var(--absent); }
+.carnet p { margin: 4px 0 0; line-height: 1.45; font-size: .9rem; }
+.vide { color: var(--muted); }
+.regles p { margin: 0; line-height: 1.5; }
+.ex { display: flex; gap: 4px; margin: 6px 0; }
+.ex .case { --t: 34px; width: 34px; height: 34px; font-size: 17px; }
+@media (prefers-reduced-motion: reduce) { .case, .ligne { animation: none !important; } }
+@media (max-height: 680px) { .key { height: 44px; } .app { gap: 6px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Le Mot <span>Juste</span></h1>
+    <button class="btn" id="b-carnet" type="button">Carnet</button>
+    <button class="btn" id="b-regles" type="button" aria-label="Règles du jeu">?</button>
+  </header>
+  <div class="long" id="long" role="group" aria-label="Nombre de lettres">
+    <span>Lettres</span>
+    <button type="button" data-n="5">5</button><button type="button" data-n="6">6</button><button type="button" data-n="7">7</button><button type="button" data-n="8">8</button>
+  </div>
+  <div class="zone">
+    <div class="toast" id="toast" hidden></div>
+    <div class="chargement" id="chargement">Chargement du dictionnaire…</div>
+    <div class="grille" id="grille" aria-label="Grille de jeu"></div>
+    <div class="indice" id="indice" hidden></div>
+    <div class="outils">
+      <button class="btn" id="b-indice" type="button">Indice : une lettre</button>
+      <button class="btn" id="b-nouveau" type="button">Nouveau mot</button>
+    </div>
+  </div>
+  <div class="clavier" id="clavier"></div>
+</div>
+
+<div class="voile" id="voile" hidden><div class="panneau" id="panneau" role="dialog" aria-modal="true"></div></div>
+
+<script>
+const ESSAIS = 6, LONGUEURS = [5, 6, 7, 8];
+const norm = w => w.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/œ/g, "oe").replace(/æ/g, "ae").replace(/Œ/g, "OE").toUpperCase();
+const $ = id => document.getElementById(id);
+const store = {
+  lire(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  ecrire(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+// Données chargées à la demande, une fois par longueur
+const DONNEES = {};
+async function charger(n) {
+  if (DONNEES[n]) return DONNEES[n];
+  const [dico, mots] = await Promise.all([
+    fetch(`data/dico-${n}.txt`).then(r => { if (!r.ok) throw 0; return r.text(); }),
+    fetch(`data/mots-${n}.json`).then(r => { if (!r.ok) throw 0; return r.json(); })
+  ]);
+  const set = new Set(dico.split("\n").map(s => s.trim()).filter(Boolean));
+  const cibles = mots.map(([mot, cat, def]) => ({ cle: norm(mot), mot, cat, def })).filter(c => c.cle.length === n);
+  cibles.forEach(c => set.add(c.cle));
+  return (DONNEES[n] = { dico: set, cibles });
+}
+
+let etat, N = 5;
+const D = () => DONNEES[N];
+
+function choisirMot() {
+  const vus = new Set(store.lire("motjuste-carnet", []).map(e => e.cle));
+  let pool = D().cibles.filter(c => !vus.has(c.cle));
+  if (!pool.length) pool = D().cibles;
+  if (etat && pool.length > 1) pool = pool.filter(c => c.cle !== etat.cible);
+  return pool[Math.floor(Math.random() * pool.length)].cle;
+}
+
+async function nouvellePartie(n = N, reprise = null) {
+  $("chargement").hidden = false; $("grille").hidden = true;
+  try { await charger(n); }
+  catch { $("chargement").textContent = "Impossible de charger le dictionnaire. Vérifie ta connexion puis recharge la page."; return; }
+  N = n; store.ecrire("motjuste-longueur", N);
+  document.querySelectorAll("#long button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.n === N)));
+  $("grille").style.setProperty("--n", N);
+  etat = reprise && reprise.n === N && D().cibles.some(c => c.cle === reprise.cible)
+    ? reprise
+    : { n: N, cible: choisirMot(), essais: [], saisie: "", fini: false, indice: null };
+  sauver();
+  $("chargement").hidden = true; $("grille").hidden = false;
+  dessinerGrille(); dessinerClavier(); majIndice(); fermer();
+  if (etat.fini) afficherFin();
+}
+function sauver() { store.ecrire("motjuste-partie", etat); }
+
+function evaluer(essai, cible) {
+  const res = Array(cible.length).fill("absent"), reste = {};
+  for (let i = 0; i < cible.length; i++) {
+    if (essai[i] === cible[i]) res[i] = "bien"; else reste[cible[i]] = (reste[cible[i]] || 0) + 1;
+  }
+  for (let i = 0; i < cible.length; i++) {
+    if (res[i] !== "bien" && reste[essai[i]] > 0) { res[i] = "mal"; reste[essai[i]]--; }
+  }
+  return res;
+}
+
+function dessinerGrille(animerLigne = -1) {
+  const g = $("grille"); g.innerHTML = "";
+  for (let r = 0; r < ESSAIS; r++) {
+    const ligne = document.createElement("div"); ligne.className = "ligne";
+    const essai = etat.essais[r];
+    const lettres = essai ? essai : (r === etat.essais.length ? etat.saisie : "");
+    const res = essai ? evaluer(essai, etat.cible) : null;
+    for (let c = 0; c < N; c++) {
+      const cs = document.createElement("div"); cs.className = "case";
+      const l = lettres[c] || "";
+      cs.textContent = l;
+      if (l && !res) cs.classList.add("pleine");
+      const h = etat.indice;
+      if (!l && !essai && !etat.fini && r === etat.essais.length && h && h.pos === c) { cs.textContent = h.lettre; cs.classList.add("fantome"); }
+      if (res) {
+        if (r === animerLigne) {
+          cs.classList.add("tourne"); cs.style.animationDelay = (c * 0.18) + "s";
+          setTimeout(() => cs.classList.add(res[c]), c * 180 + 250);
+        } else cs.classList.add(res[c]);
+      }
+      cs.setAttribute("aria-label", l ? l + (res ? " : " + ({ bien: "bien placée", mal: "mal placée", absent: "absente" })[res[c]] : "") : "vide");
+      ligne.appendChild(cs);
+    }
+    g.appendChild(ligne);
+  }
+}
+
+const RANGS = ["AZERTYUIOP", "QSDFGHJKLM", "↵WXCVBN⌫"];
+function dessinerClavier() {
+  const etatTouche = {}, rang = { absent: 1, mal: 2, bien: 3 };
+  etat.essais.forEach(e => evaluer(e, etat.cible).forEach((r, i) => {
+    if (!etatTouche[e[i]] || rang[r] > rang[etatTouche[e[i]]]) etatTouche[e[i]] = r;
+  }));
+  const k = $("clavier"); k.innerHTML = "";
+  RANGS.forEach(ligne => {
+    const d = document.createElement("div"); d.className = "rang";
+    [...ligne].forEach(ch => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "key";
+      if (ch === "↵") { b.textContent = "Entrée"; b.classList.add("large"); b.dataset.k = "Enter"; }
+      else if (ch === "⌫") { b.textContent = "⌫"; b.classList.add("large"); b.dataset.k = "Backspace"; b.setAttribute("aria-label", "Effacer"); }
+      else { b.textContent = ch; b.dataset.k = ch; if (etatTouche[ch]) b.classList.add(etatTouche[ch]); }
+      d.appendChild(b);
+    });
+    k.appendChild(d);
+  });
+}
+
+let toastTimer;
+function toast(msg, ms = 1800) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, ms);
+}
+function secouer() {
+  const l = $("grille").children[etat.essais.length];
+  l.classList.remove("secoue"); void l.offsetWidth; l.classList.add("secoue");
+}
+
+let anime = false;
+function touche(k) {
+  if (!etat || etat.fini || anime || !$("voile").hidden) return;
+  if (k === "Enter") return valider();
+  if (k === "Backspace") { etat.saisie = etat.saisie.slice(0, -1); return dessinerGrille(); }
+  const l = norm(k);
+  if (/^[A-Z]$/.test(l) && etat.saisie.length < N) { etat.saisie += l; dessinerGrille(); }
+}
+
+function valider() {
+  const s = etat.saisie;
+  if (s.length < N) { secouer(); return toast("Il manque des lettres"); }
+  if (!D().dico.has(s)) { secouer(); return toast("« " + s + " » n'est pas dans le dictionnaire"); }
+  etat.essais.push(s); etat.saisie = "";
+  dessinerGrille(etat.essais.length - 1);
+  const gagne = s === etat.cible, perdu = !gagne && etat.essais.length >= ESSAIS;
+  if (gagne || perdu) { etat.fini = true; etat.gagne = gagne; noterCarnet(); }
+  sauver();
+  anime = true;
+  setTimeout(() => {
+    anime = false; dessinerClavier();
+    if (etat.fini) { majIndice(); afficherFin(); }
+  }, N * 180 + 450);
+}
+
+function cibleInfo() { return D().cibles.find(c => c.cle === etat.cible); }
+
+function donnerIndice() {
+  if (!etat || etat.indice || etat.fini) return;
+  const trouvees = new Set();
+  etat.essais.forEach(e => evaluer(e, etat.cible).forEach((r, i) => { if (r === "bien") trouvees.add(i); }));
+  let libres = [...Array(N).keys()].filter(i => !trouvees.has(i));
+  if (!libres.length) libres = [...Array(N).keys()];
+  const pos = libres[Math.floor(Math.random() * libres.length)];
+  etat.indice = { pos, lettre: etat.cible[pos] };
+  sauver(); majIndice(); dessinerGrille();
+}
+
+function majIndice() {
+  const i = $("indice"), h = etat.indice;
+  if (h && !etat.fini) {
+    i.innerHTML = `<b>Indice</b>La ${h.pos === 0 ? "1<sup>re</sup>" : (h.pos + 1) + "<sup>e</sup>"} lettre est un <strong>${h.lettre}</strong>.`;
+    i.hidden = false;
+  } else i.hidden = true;
+  $("b-indice").hidden = etat.fini;
+  $("b-indice").disabled = !!etat.indice;
+  $("b-indice").textContent = etat.indice ? "Indice utilisé" : "Indice : une lettre";
+}
+
+function noterCarnet() {
+  const c = cibleInfo();
+  const carnet = store.lire("motjuste-carnet", []).filter(e => e.cle !== c.cle);
+  carnet.unshift({ cle: c.cle, mot: c.mot, cat: c.cat, def: c.def, gagne: etat.gagne, essais: etat.essais.length, indice: !!etat.indice });
+  store.ecrire("motjuste-carnet", carnet.slice(0, 500));
+}
+
+const echap = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+function fiche(c) {
+  return `<div class="fiche"><div class="mot">${echap(c.mot)}</div><div class="cat">${echap(c.cat)}</div>
+    <p>${echap(c.def)}</p>
+    <a href="https://fr.wiktionary.org/wiki/${encodeURIComponent(c.mot)}" target="_blank" rel="noopener">En savoir plus sur le Wiktionnaire ↗</a></div>`;
+}
+
+function ouvrir(html) { $("panneau").innerHTML = html; $("voile").hidden = false; const b = $("panneau").querySelector(".primary"); if (b) b.focus(); }
+function fermer() { $("voile").hidden = true; }
+
+function afficherFin() {
+  const c = cibleInfo(), n = etat.essais.length;
+  const titre = etat.gagne ? (n === 1 ? "Du premier coup !" : n <= 3 ? "Bravo !" : "Trouvé !") : "Pas cette fois";
+  const verdict = etat.gagne ? `Mot trouvé en ${n} essai${n > 1 ? "s" : ""}${etat.indice ? ", avec l'indice" : ""}.` : "Voici le mot qu'il fallait trouver :";
+  const mini = '<div class="mini" aria-hidden="true">' + etat.essais.map(e => '<div class="rangee">' + evaluer(e, etat.cible).map(r => `<i class="${r}"></i>`).join("") + "</div>").join("") + "</div>";
+  ouvrir(`<h2>${titre}</h2><p class="verdict">${verdict}</p>${mini}${fiche(c)}
+    <div class="actions"><button class="btn" type="button" data-a="carnet">Mon carnet</button><button class="btn primary" type="button" data-a="nouveau">Nouveau mot</button></div>`);
+}
+
+function afficherCarnet() {
+  const carnet = store.lire("motjuste-carnet", []).filter(e => e.mot);
+  const ok = carnet.filter(e => e.gagne).length;
+  const items = carnet.map(e => `<li><span class="etat ${e.gagne ? "ok" : "ko"}">${e.gagne ? "trouvé en " + e.essais : "raté"}</span><strong>${echap(e.mot)}</strong><em>${echap(e.cat)}</em><p>${echap(e.def)}</p></li>`).join("");
+  ouvrir(`<h2>Mon carnet de mots</h2>
+    ${carnet.length ? `<p class="verdict">${carnet.length} mot${carnet.length > 1 ? "s" : ""} rencontré${carnet.length > 1 ? "s" : ""}, ${ok} trouvé${ok > 1 ? "s" : ""}.</p><ul class="carnet">${items}</ul>`
+      : `<p class="vide">Ton carnet est vide pour l'instant. Chaque mot joué, trouvé ou non, s'y ajoute avec sa définition pour que tu puisses le relire.</p>`}
+    <div class="actions"><button class="btn primary" type="button" data-a="fermer">Fermer</button></div>`);
+}
+
+function afficherRegles() {
+  const ex = (mot, res) => '<div class="ex">' + [...mot].map((l, i) => `<div class="case ${res[i] || ""}">${l}</div>`).join("") + "</div>";
+  ouvrir(`<h2>Comment jouer</h2><div class="regles">
+    <p>Choisis la longueur du mot (5 à 8 lettres), puis trouve-le en 6 essais. Chaque essai doit être un mot qui existe : tape-le puis appuie sur Entrée. Les accents ne comptent pas (É = E, Œ = OE).</p>
+    ${ex("PLAGE", ["bien"])}<p>Le P est dans le mot et à la bonne place.</p>
+    ${ex("TIGRE", ["", "", "mal"])}<p>Le G est dans le mot, mais à une autre place.</p>
+    ${ex("LUNDI", ["", "", "", "absent"])}<p>Le D n'est pas dans le mot.</p>
+    <p style="margin-top:10px">Tu bloques ? Le bouton Indice te révèle une seule lettre et sa place, une fois par partie.</p>
+    <p style="margin-top:10px">À la fin de chaque partie, tu découvres la définition du mot. Tous les mots joués restent dans ton carnet.</p></div>
+    <div class="actions"><button class="btn primary" type="button" data-a="fermer">J'ai compris</button></div>`);
+}
+
+// Un bouton qui abandonne une partie en cours demande un second appui
+// Renvoie "libre" (pas de partie en cours), "attente" (premier appui) ou "abandon" (second appui)
+function confirmerAbandon(btn, message) {
+  if (!etat || etat.fini || !etat.essais.length) return "libre";
+  if (btn.dataset.confirm !== "1") {
+    btn.dataset.confirm = "1"; toast(message, 3000);
+    setTimeout(() => { btn.dataset.confirm = ""; }, 3000);
+    return "attente";
+  }
+  btn.dataset.confirm = "";
+  etat.fini = true; etat.gagne = false; noterCarnet(); sauver();
+  return "abandon";
+}
+
+$("clavier").addEventListener("click", e => { const b = e.target.closest(".key"); if (b) { touche(b.dataset.k); b.blur(); } });
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!$("voile").hidden) { if (e.key === "Escape") fermer(); return; }
+  if (e.key === "Enter" || e.key === "Backspace" || e.key.length === 1) { e.preventDefault(); touche(e.key); }
+});
+$("panneau").addEventListener("click", e => {
+  const a = e.target.closest("[data-a]"); if (!a) return;
+  if (a.dataset.a === "fermer") fermer();
+  if (a.dataset.a === "nouveau") nouvellePartie();
+  if (a.dataset.a === "carnet") afficherCarnet();
+});
+$("voile").addEventListener("click", e => { if (e.target === $("voile")) fermer(); });
+$("b-carnet").onclick = e => { e.currentTarget.blur(); afficherCarnet(); };
+$("b-regles").onclick = e => { e.currentTarget.blur(); afficherRegles(); };
+$("b-indice").onclick = e => { e.currentTarget.blur(); donnerIndice(); };
+$("b-nouveau").onclick = e => {
+  const b = e.currentTarget; b.blur();
+  const r = confirmerAbandon(b, "Appuie encore pour abandonner ce mot");
+  if (r === "attente") return;
+  if (r === "abandon") { majIndice(); dessinerClavier(); return afficherFin(); }
+  nouvellePartie();
+};
+$("long").addEventListener("click", e => {
+  const b = e.target.closest("button[data-n]"); if (!b) return; b.blur();
+  const n = +b.dataset.n; if (etat && n === N && !etat.fini) return;
+  if (confirmerAbandon(b, "Partie en cours : appuie encore pour changer de longueur") === "attente") return;
+  nouvellePartie(n);
+});
+
+const reprise = store.lire("motjuste-partie", null);
+const n0 = LONGUEURS.includes(store.lire("motjuste-longueur", 5)) ? store.lire("motjuste-longueur", 5) : 5;
+nouvellePartie(reprise && LONGUEURS.includes(reprise.n) ? reprise.n : n0, reprise).then(() => {
+  if (!store.lire("motjuste-vu", false)) { store.ecrire("motjuste-vu", true); afficherRegles(); }
+});
+</script>
+</body>
+</html>
